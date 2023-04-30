@@ -1,0 +1,47 @@
+#include <Arduino.h>
+#include "gravity_soil_moisture_sensor.h"
+#include <DFRobot_DHT20.h>
+#include <cmath>
+
+//object for the sensor
+DFRobot_DHT20 dht20;
+GravitySoilMoistureSensor gravity_sensor;
+
+
+#define Humidity_Offset 1000
+#define Dry_Moisture_Value 100
+
+
+//PINS
+#define Moisture_Sensor 27
+
+
+void setup() {
+      //set up serial port
+    Serial.begin(9600);
+    Serial.print("Start");
+    //Initialize sensor
+    while(dht20.begin()){
+      Serial.println("DHT 20 Not Connected");
+      delay(1000);
+    }
+
+    //Initialize sensor
+    while(!gravity_sensor.Setup(Moisture_Sensor)){
+      Serial.println("Soil Moisture Sensor was not detected. Check wiring!");
+      delay(1000);
+    }
+}
+
+void loop() {
+  
+    uint16_t value = gravity_sensor.Read();
+    float temperature = dht20.getTemperature();
+    float fahrenheit = (temperature * 9/5) + 32;
+    float humidity = dht20.getHumidity()*100;
+    
+    Serial.printf("Temperature: %.2f degrees Celsius, Humidity: %.2f%%\n", fahrenheit, humidity);
+    Serial.printf("Moisture: %d\n", abs(value-Humidity_Offset));
+    //check everysecond
+    delay(1000);
+}
