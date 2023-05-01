@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <DFRobot_DHT20.h>
 #include <WiFi.h>
-#include "ThingSpeak.h" // always include thingspeak header file after other header files and custom macros
+#include "ThingSpeak.h" 
 #include <WiFiClient.h>
 #include <cstdint>
 #include <HttpClient.h>
@@ -11,37 +11,36 @@
 #include "gravity_soil_moisture_sensor.h"
 #include <esp_sleep.h>
 
-
+// Vaules for open and close vaules for the servo
 #define open 180
 #define close 0
 
-char ssid[] = "Home Wireless";    // your network SSID (name)
-char pass[] = "245611TV"; // your network password (use for WPA, or use as key for WEP)
+// WiFi network credentials
+char ssid[] = "Home";    // your network SSID (name)
+char pass[] = "12345"; // your network password (use for WPA, or use as key for WEP)
 int keyIndex = 0;            // your network key Index number (needed only for WEP)
 
-//object for the sensor
+// Object instances for sensors and WiFi client
 WiFiClient client;
 DFRobot_DHT20 dht20;
 GravitySoilMoistureSensor gravity_sensor;
 
 
-
+// Define constants and variables for sensors and actuation
 #define Humidity_Offset 1000
 #define Dry_Moisture_Value 100
-Servo myservo;  // create servo object to control a servo
+#define Moisture_Sensor 37
+Servo myservo;  // Create servo object to control a servo
 float lightValue;
 float maxAnalogValue=4000;
-
-
-//PINS
-#define Moisture_Sensor 37
 int servoPIN = 17;
 int photoCellPIN = 36;
 
+// ThingSpeak constants and variables
 unsigned long myChannelNumber = 2112445;
 const char * myWriteAPIKey = "6LNT6NPY7KK4QBEW";
 
-// Initialize our values
+// Watering and sleeping variables
 String myStatus = "";
 float dryLevel = 0;
 float timeForGalonPerSecond = 2; //1/0.17 = seconds for 1 galon 
@@ -52,10 +51,9 @@ bool goodWeatherForWatering = true;
 long sleepTimeInterval = 3600000;//every hour
 int badLightCounter = 0;
 unsigned long requestCounter =0;
-//functions
 
+// Functions declarations
 void handlePhysicalValve(int moistureValue);
-
 void handelOnlinePlatform(float n1,float n2,float n3, float n4,const char* weatherCondtion);
 const char* getWeather();
 void hourLongDeepSleep();
@@ -64,6 +62,7 @@ void setup() {
     //Initialize serial and wait for port to open
     Serial.begin(9600);  // Initialize serial
 
+    // Connect to WiFi
     Serial.print("Searching for ESP8266...");
     // initialize ESP module
     WiFi.begin(ssid, pass);
@@ -80,7 +79,7 @@ void setup() {
           
         }
     }
-
+    // Print WiFi connection with IP and MAC
     Serial.println("");
     Serial.println("WiFi connected");
     Serial.println("IP address: ");
@@ -99,18 +98,18 @@ void setup() {
         Serial.println("Soil Moisture Sensor was not detected. Check wiring!");
         delay(1000);
     }
-    // attaches the servo on pin
+    // Attach servo to pin
     myservo.attach(servoPIN);
-
-    ThingSpeak.begin(client);  // Initialize ThingSpeak
+    // Initialize ThingSpeak client
+    ThingSpeak.begin(client); 
 
 }
 
 void loop() {
-  //a new loop execution have been made 
+  // A new loop execution have been made 
   requestCounter++;
-  //configer the timer so that this code runs every hour
-  // calculate the time taken for the loop code to execute
+  // Configer the timer so that this code runs every hour
+  // Calculate the time taken for the loop code to execute
   unsigned long loopTime = millis();
 
   // Connect or reconnect to WiFi
@@ -123,7 +122,7 @@ void loop() {
           Serial.print(".");
           delay(100);
           connectionAttempts++;
-          //check if 100 Attempts have been made
+          // Check if 100 Attempts have been made
           if (connectionAttempts > 100){
             connectionAttempts = 0;
             //hourLongDeepSleep(); 
@@ -131,55 +130,60 @@ void loop() {
         }
       Serial.println("\nConnected.");
   }
-  //read the light vaule
+  // Read the light vaule
   lightValue = analogRead(photoCellPIN);
   Serial.print("light vaule: ");
   Serial.println(lightValue);
-  //read Moisture sensor
+  // Read Moisture sensor
   uint16_t value = gravity_sensor.Read();
   int moistureValue = abs(value-Humidity_Offset);
   Serial.printf("Moisture: %d\n", moistureValue);
 
-  //read temperature
+  // Read temperature
   float temperature = dht20.getTemperature();
   float temperatureFahrenheit = (temperature * 9/5) + 32;
   float humidity = dht20.getHumidity()*100;
   Serial.printf("Temperature: %.2f degrees Fahrenheit, Humidity: %.2f%%\n", temperatureFahrenheit, humidity);
-  //check if weather is good for wataring 
+  // Check if weather is good for wataring 
   const char* weatherCondtion =  getWeather();
 
-  //only water on good days
+  // Only water on good days
   if(goodWeatherForWatering){
     handlePhysicalValve(moistureValue);
   }
-  //post the info on the website
+  // Post the info on the website
   handelOnlinePlatform(temperatureFahrenheit,humidity,moistureValue,lightValue,weatherCondtion);
     
-  // put the ESP32 to sleep for sleepTime minus the time taken for the loop code to execute
+  // Put the ESP32 to sleep for sleepTime minus the time taken for the loop code to execute
+  // Not in use for testing
   long sleepForTime = (sleepTimeInterval - loopTime)*1000;
   Serial.printf("sleepTime for : %d\n", sleepTimeInterval);
   Serial.printf("loopTime for : %d\n", loopTime);
   Serial.printf("Sleep for : %d\n", sleepForTime);
-  
-    //sleep(sleepForTime * 1000);
-  //esp_sleep_enable_timer_wakeup(sleepForTime);
-  //delay(100);
-  //esp_deep_sleep_start();
+  // Disconnect from the WiFi
   WiFi.disconnect(true);
+  // Put ESP32 to deep sleep
   hourLongDeepSleep();
+  // Make sure it went to deep sleep
   delay(100);
-  //delay(40000); // Wait 20 seconds to update the channel again
 }
-
+/**
+ * @brief Handles sending data to an online platform.
+ * @param n1 The first data point to send.
+ * @param n2 The second data point to send.
+ * @param n3 The third data point to send.
+ * @param n4 The fourth data point to send.
+ * @param weatherCondtion The current weather condition to sen
+ */
 void handelOnlinePlatform(float temp,float hum,float mois, float light,const char* weatherCondtion) {
-  // set the fields with the values
+  // Set the fields with the values
     
     ThingSpeak.setField(1, temp);
     ThingSpeak.setField(2, hum);
     ThingSpeak.setField(3, mois);
     ThingSpeak.setField(4, light);
 
-    // figure out the status message
+    // Figure out the status message
     
     //myStatus = String("field1 is greater than field2");
     if(dryLevel > 0 && goodWeatherForWatering){
@@ -191,7 +195,7 @@ void handelOnlinePlatform(float temp,float hum,float mois, float light,const cha
     if(lightValue>200){
       badLightCounter++;
     }
-    //most vegetables and flowering plants need 12 to 16 hours of light per day
+    // Most vegetables and flowering plants need 12 to 16 hours of light per day
     //24 is the number requestCounter we make in 24 hours
     if(requestCounter > 24){
       if(badLightCounter > (requestCounter/2)){
@@ -202,10 +206,10 @@ void handelOnlinePlatform(float temp,float hum,float mois, float light,const cha
           }
     }
     
-    // set the status
+    // Set the status
     ThingSpeak.setStatus(myStatus);
 
-    // write to the ThingSpeak channel
+    // Write to the ThingSpeak channel
     int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
     if(x == 200){
       Serial.println("Channel update successful.");
@@ -215,7 +219,10 @@ void handelOnlinePlatform(float temp,float hum,float mois, float light,const cha
     }
 
 }
-
+/**
+ * @brief Handles the physical valve based on the moisture value.
+ * @param moistureValue The moisture value used to determine when to open or close the 
+**/
 void handlePhysicalValve(int moistureValue) {
     //uint16_t value;//Level of dryness higher means we have to use more water
     if (moistureValue < 250) {
@@ -246,6 +253,10 @@ void handlePhysicalValve(int moistureValue) {
         myservo.write(close);
     }
 }
+/**
+ * @brief Gets the current weather condition. Using an online API.
+ * @return const char* The current weather condition.
+**/
 const char* getWeather(){
   // Send HTTP request to OpenWeatherMap API
   HTTPClient http;
@@ -278,12 +289,13 @@ const char* getWeather(){
 
   http.end();
 }
-
+//@brief Puts the device into an hour-long deep sleep.
 void hourLongDeepSleep(){
   Serial.print("Deep Sleeping for an hour");
   //deep sleep for an hour
   unsigned long long hourInNano = 60ULL * 60 * 1000000;
-  unsigned long long halfHourInNano = hourInNano / 2;
+  //******* make it half an hour for testing. ***********
+  unsigned long long halfHourInNano = hourInNano / 2; //delete this line to make it an hour. 
   esp_sleep_enable_timer_wakeup(halfHourInNano);
   delay(100);
   esp_deep_sleep_start();
